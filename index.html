@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>フォント文字をSVG化</title>
+    <!-- Tailwind CSS を使用してスタイリング -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Interフォントを適用 */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* SVGのスタイル */
+        #output-svg {
+            border: 1px solid #d1d5db;
+            padding: 10px;
+            margin-top: 20px;
+            background-color: #ffffff;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            overflow-x: auto;
+        }
+        /* アラートメッセージ用のスタイル */
+        .alert-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            border-radius: 0.5rem;
+            color: #ffffff;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        .alert-box.show {
+            opacity: 1;
+        }
+        .alert-box.success {
+            background-color: #10b981; /* green-500 */
+        }
+        .alert-box.error {
+            background-color: #ef4444; /* red-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <!-- メインコンテナ -->
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-2xl text-center">
+        <h1 class="text-3xl font-bold text-gray-800 mb-4">フォント文字をSVG化するツール</h1>
+        <p class="text-gray-600 mb-6">フォントファイルを選択し、SVG化したい文字を入力して「SVG生成」ボタンを押してください。</p>
+
+        <!-- 入力フォーム -->
+        <div class="flex flex-col items-center space-y-4">
+            <label for="fontFile" class="w-full text-left font-medium text-gray-700">フォントファイル (.otf, .ttf)</label>
+            <input type="file" id="fontFile" accept=".otf,.ttf" class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            
+            <label for="char" class="w-full text-left font-medium text-gray-700">SVG化したい文字</label>
+            <input type="text" id="char" placeholder="例: M1 Pro" class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            
+            <button id="generate" class="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors shadow-md">
+                SVG生成
+            </button>
+        </div>
+
+        <!-- 出力とダウンロードボタンのコンテナ -->
+        <div id="output" class="mt-8 text-left">
+            <h2 class="text-xl font-semibold text-gray-800 mb-2">生成されたSVG</h2>
+            <div id="output-svg" class="w-full">
+                <!-- SVGがここに表示されます -->
+            </div>
+            <!-- ダウンロードボタンのコンテナ -->
+            <div id="download-container" class="mt-4 hidden">
+                <a id="download-link" class="inline-block bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition-colors shadow-md">
+                    SVGをダウンロード
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- カスタムアラートボックス -->
+    <div id="custom-alert" class="alert-box"></div>
+
+    <!-- opentype.js ライブラリを読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
+    <script>
+        /**
+         * カスタムアラートメッセージを表示する関数
+         * @param {string} message - 表示するメッセージ
+         * @param {string} type - 'success' または 'error'
+         */
+        function showAlert(message, type) {
+            const alertBox = document.getElementById('custom-alert');
+            alertBox.textContent = message;
+            alertBox.className = `alert-box show ${type}`;
+            
+            // 3秒後に非表示にする
+            setTimeout(() => {
+                alertBox.className = 'alert-box';
+            }, 3000);
+        }
+
+        document.getElementById('generate').onclick = async () => {
+            const fileInput = document.getElementById('fontFile');
+            const chars = document.getElementById('char').value;
+
+            // ファイルと文字が入力されているかチェック
+            if (!fileInput.files[0] || !chars) {
+                showAlert('フォントと文字を指定してください。', 'error');
+                return;
+            }
+
+            try {
+                // ファイルをArrayBufferとして読み込む
+                const arrayBuffer = await fileInput.files[0].arrayBuffer();
+                // opentype.jsでフォントを解析
+                const font = opentype.parse(arrayBuffer);
+
+                const outputSvgDiv = document.getElementById('output-svg');
+                outputSvgDiv.innerHTML = ''; // 出力領域をクリア
+
+                let offsetX = 0;
+                const paths = [];
+                const fontSize = 150;
+                const scale = fontSize / font.unitsPerEm;
+
+                // 入力された各文字をループ処理
+                for (let char of chars) {
+                    // 文字からグリフを取得
+                    const glyph = font.charToGlyph(char);
+                    
+                    // グリフからSVGパスを取得
+                    const path = glyph.getPath(offsetX, fontSize, fontSize);
+                    
+                    paths.push(path.toSVG());
+                    
+                    // 次の文字のためにX座標を更新
+                    offsetX += glyph.advanceWidth * scale;
+                }
+
+                // 全てのパスを結合して完全なSVG文字列を作成
+                const svgString = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${offsetX} ${fontSize}'>${paths.join('')}</svg>`;
+
+                // SVGをDOMに追加して表示
+                const svgContainer = document.createElement('div');
+                svgContainer.innerHTML = svgString;
+                outputSvgDiv.appendChild(svgContainer);
+
+                // ダウンロードリンクを作成
+                const downloadContainer = document.getElementById('download-container');
+                const downloadLink = document.getElementById('download-link');
+                
+                // ファイル名として入力文字を使用
+                const filename = chars.replace(/[\\/:*?"<>|]/g, '_').substring(0, 50);
+                downloadLink.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
+                downloadLink.download = `${filename}.svg`;
+                
+                downloadContainer.classList.remove('hidden'); // ダウンロードボタンを表示
+                
+                showAlert('SVGが生成されました！', 'success');
+
+            } catch (e) {
+                showAlert('エラーが発生しました。フォントファイルが破損しているか、対応していない形式の可能性があります。', 'error');
+                console.error(e);
+            }
+        };
+    </script>
+
+</body>
+</html>
